@@ -15,16 +15,11 @@ struct Vertex
     set<size_t> adj_faces;
 };
 
-struct Edge
-{
-    size_t v0, v1;
-};
-
 struct Face
 {
     vector<size_t> v_indices;
     vector<size_t> v_indices_old;
-    size_t new_face_idx = -1;
+    size_t new_face_idx = 0;
 
     Vector3f centroid(const Polyhedron &p) const;
 
@@ -47,10 +42,10 @@ struct Face
 struct Polyhedron
 {
     vector<Vertex> vertices;
-    vector<Edge> edges;
     vector<Face> faces;
     using Edge = pair<size_t, size_t>;
     set<Edge> processed_edges;
+    Vector3f color = Vector3f::Ones();
 
     Vector3f v(size_t i) const
     {
@@ -72,6 +67,22 @@ struct Polyhedron
     void add_processed_edge(size_t vi0, size_t vi1)
     {
         processed_edges.insert(make_edge(vi0, vi1));
+    }
+
+    void draw() const
+    {
+        for(auto &&f : faces)
+        {
+            glBegin(GL_POLYGON);
+            for(auto &&vi : f.v_indices)
+            {
+                const auto p = vertices[vi].pos;
+                //glColor3fv((p + Vector3f::Ones()).normalized().cwiseAbs().eval().data());
+                glColor3fv(color.data());
+                glVertex3fv(p.data());
+            }
+            glEnd();
+        }
     }
 };
 
@@ -166,22 +177,84 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         // connect all corresponding new vertices to form a V-face
         s.faces.push_back(std::move(nf));
     }
+    return std::move(s);
+}
+
+Polyhedron box, sd;
+
+void init_box()
+{
+    box.vertices =
+    {
+        { { -1, 1, 1 }, { 0, 2, 4 } },
+        { { 1, 1, 1 }, { 0, 2, 5 } },
+        { { -1, -1, 1 }, { 1, 2, 4 } },
+        { { 1, -1, 1 }, { 1, 2, 5 } },
+        { { -1, 1, -1 }, { 0, 3, 4 } },
+        { { 1, 1, -1 }, { 0, 3, 5 } },
+        { { -1, -1, -1 }, { 1, 3, 4 } },
+        { { 1, -1, -1 }, { 1, 3, 5 } }
+    };
+    box.faces.insert(box.faces.end(), 6, { });
+    box.faces[0].v_indices = { 0, 1, 5, 4 };
+    box.faces[1].v_indices = { 2, 3, 7, 6 };
+    box.faces[2].v_indices = { 0, 2, 3, 1 };
+    box.faces[3].v_indices = { 4, 5, 7, 6 };
+    box.faces[4].v_indices = { 0, 4, 6, 2 };
+    box.faces[5].v_indices = { 1, 3, 7, 5 };
+}
+
+void reshape(int w, int h)
+{
+    GLfloat aspect = (GLfloat)w / (GLfloat)h;
+    GLfloat nRange = 2.0f;
+    glViewport(0, 0, w, h);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    if(w <= h)
+    {
+        glOrtho(-nRange, nRange, -nRange * aspect, nRange * aspect, -nRange, nRange);
+    }
+    else
+    {
+        glOrtho(-nRange, nRange, -nRange / aspect, nRange / aspect, -nRange, nRange);
+    }
 }
 
 void display(void)
 {
-    glClear(GL_COLOR_BUFFER_BIT);
-    glutWireCube(1.f);
+    glEnable(GL_DEPTH);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+    /*glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    //gluPerspective(120, 1, -10, 10);*/
+    reshape(500, 500);
+    glRotatef(30, 1.0f, 0.0f, 0.0f);
+    glRotatef(-30, 0.0f, 1.0f, 0.0f);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    // glTranslatef(0, 0, -5);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    box.draw();
+    sd.draw();
+
     glutSwapBuffers();
 }
 
 int main(int argc, char **argv)
 {
+    init_box();
+    sd = doo_sabin(box);
+    sd.color = { 1, 1, 0 };
+
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(500, 500);
     glutInitWindowPosition(0, 0);
-    glutCreateWindow("Triangle");
+    glutCreateWindow("Doo-Sabin");
     glewInit();
     glutDisplayFunc(display);
     glutMainLoop();
