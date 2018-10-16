@@ -128,7 +128,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         s.faces.push_back(std::move(nf));
     }
 
-    // second pass on faces to process edges
+    /*// second pass on faces to process edges
     for(auto &&f : p.faces)
     {
         // create E-faces for each edge
@@ -155,24 +155,25 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                     Face nf;
                     nf.v_indices = { evi0, evi1, evi2, evi3 };
                     s.faces.push_back(std::move(nf));
+                    p.add_processed_edge(vi0, vi1);
+                    break;
                 }
             }
         }
-    }
+    }*/
 
     // for each vertex - gen V-faces
-    for(auto &&v : p.vertices)
+    for(size_t i = 0; i < p.vertices.size(); ++i)
     {
+        auto &v = p.vertices[i];
         Face nf;
         nf.v_indices.reserve(v.adj_faces.size());
-        size_t i = 0;
         // find all connected faces
         for(auto &&fi : v.adj_faces)
         {
             // find corresponding new vertex in the new face
-            size_t nvi = s.faces[p.faces[fi].new_face_idx].v_indices[i];
+            size_t nvi = s.faces[p.faces[fi].new_face_idx].new_vertex_idx(i);
             nf.v_indices.push_back(nvi);
-            ++i;
         }
         // connect all corresponding new vertices to form a V-face
         s.faces.push_back(std::move(nf));
@@ -223,7 +224,7 @@ void reshape(int w, int h)
 
 void display(void)
 {
-    glEnable(GL_DEPTH);
+    glDisable(GL_DEPTH);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     /*glMatrixMode(GL_PROJECTION);
