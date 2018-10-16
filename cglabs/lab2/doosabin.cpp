@@ -29,7 +29,8 @@ struct Face
         if(i0 == v_indices.end()) return false;
         const auto i1 = find(v_indices.begin(), v_indices.end(), vi1);
         if(i1 == v_indices.end()) return false;
-        return abs(distance(i0, i1)) == 1;
+        const auto d = abs(distance(i0, i1));
+        return d == 1 || d == v_indices.size() - 1;
     }
 
     size_t new_vertex_idx(size_t old) const
@@ -128,9 +129,10 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         s.faces.push_back(std::move(nf));
     }
 
-    /*// second pass on faces to process edges
-    for(auto &&f : p.faces)
+    // second pass on faces to process edges
+    for(size_t fi = 0; fi < p.faces.size(); ++fi)
     {
+        auto &f = p.faces[fi];
         // create E-faces for each edge
         for(size_t i = 0; i < f.v_indices.size() - 1; ++i)
         {
@@ -140,6 +142,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
             // find adjacent face
             for(auto &&af : p.vertices[vi0].adj_faces) // or equivalently, use vi1
             {
+                if(af == fi) continue;
                 const auto &cf = p.faces[af];
                 // adjacent face is found
                 if(cf.has_edge(vi0, vi1))
@@ -148,10 +151,10 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                     const auto &nf1 = s.faces[cf.new_face_idx];
                     // find corresponding new vertices on each face,
                     // to form a E-face
-                    const auto evi0 = nf0.new_vertex_idx(vi0);
-                    const auto evi1 = nf0.new_vertex_idx(vi1);
-                    const auto evi2 = nf1.new_vertex_idx(vi1);
-                    const auto evi3 = nf1.new_vertex_idx(vi0);
+                    const auto evi0 = nf0.new_vertex_idx(vi1);
+                    const auto evi1 = nf0.new_vertex_idx(vi0);
+                    const auto evi2 = nf1.new_vertex_idx(vi0);
+                    const auto evi3 = nf1.new_vertex_idx(vi1);
                     Face nf;
                     nf.v_indices = { evi0, evi1, evi2, evi3 };
                     s.faces.push_back(std::move(nf));
@@ -160,8 +163,9 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                 }
             }
         }
-    }*/
+    }
 
+    /*
     // for each vertex - gen V-faces
     for(size_t i = 0; i < p.vertices.size(); ++i)
     {
@@ -177,7 +181,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         }
         // connect all corresponding new vertices to form a V-face
         s.faces.push_back(std::move(nf));
-    }
+    }*/
     return std::move(s);
 }
 
