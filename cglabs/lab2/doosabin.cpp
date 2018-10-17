@@ -11,11 +11,51 @@ using namespace Eigen;
 using namespace std;
 
 struct Polyhedron;
+using Edge = pair<size_t, size_t>;
+using AdjFaces = pair<size_t, size_t>;
+using CrossEdge = pair<size_t, size_t>; // face-face
+
+pair<size_t, size_t> make_ordered_pair(size_t vi0, size_t vi1)
+{
+    assert(vi0 != vi1);
+    return vi0 > vi1 ? make_pair(vi1, vi0) : make_pair(vi0, vi1);
+}
 
 struct Vertex
 {
     Vector3f pos;
-    set<size_t> adj_faces;
+    vector<size_t> adj_faces;
+    set<CrossEdge> crosses;
+
+    void sort_adj_faces()
+    {
+        vector<size_t> sorted;
+        sorted.reserve(adj_faces.size());
+        sorted.push_back(crosses.begin()->first);
+        sorted.push_back(crosses.begin()->second);
+        crosses.erase(crosses.begin());
+        while(!crosses.empty())
+        {
+            for(auto i = crosses.begin(); i != crosses.end(); )
+            {
+                if(i->first == sorted.back())
+                {
+                    sorted.push_back(i->second);
+                    i = crosses.erase(i);
+                }
+                else if(i->second == sorted.back())
+                {
+                    sorted.push_back(i->first);
+                    i = crosses.erase(i);
+                }
+                else
+                {
+                    ++i;
+                }
+            }
+        }
+        adj_faces = sorted;
+    }
 };
 
 struct Face
@@ -47,9 +87,7 @@ struct Polyhedron
 {
     vector<Vertex> vertices;
     vector<Face> faces;
-    using Edge = pair<size_t, size_t>;
-    using AdjFaces = pair<size_t, size_t>;
-    set<Edge> processed_edges;
+
     map<Edge, AdjFaces> adjacent_faces;
 
     Vector3f color = Vector3f::Ones();
@@ -59,21 +97,15 @@ struct Polyhedron
         return vertices[i].pos;
     }
 
-    static Edge make_edge(size_t vi0, size_t vi1)
-    {
-        assert(vi0 != vi1);
-        return vi0 > vi1 ? make_pair(vi1, vi0) : make_pair(vi0, vi1);
-    }
-
     bool is_edge_processed(size_t vi0, size_t vi1) const
     {
-        return processed_edges.find(make_edge(vi0, vi1))
-            != processed_edges.end();
+        return adjacent_faces.find(make_ordered_pair(vi0, vi1))
+            != adjacent_faces.end();
     }
 
-    void add_processed_edge(size_t vi0, size_t vi1)
+    void add_adj_faces(size_t vi0, size_t vi1, size_t f0, size_t f1)
     {
-        processed_edges.insert(make_edge(vi0, vi1));
+        adjacent_faces.insert({ make_ordered_pair(vi0, vi1), { f0, f1 }});
     }
 
     void draw() const
@@ -97,6 +129,13 @@ struct Polyhedron
         ofstream out(path);
         for(auto &&v : vertices)
         {
+            out << "# adj: ";
+            for(auto &&a : v.adj_faces)
+                out << a << " ";
+            out << "# crs: ";
+            for(auto &&c : v.crosses)
+                out << c.first << "-" << c.second << " ";
+            out << "\n";
             out << "v " << v.pos.x() << " " << v.pos.y() << " " << v.pos.z() << "\n";
         }
         for(auto &&f : faces)
@@ -146,7 +185,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
             nf.v_indices.push_back(s.vertices.size());
             nf.v_indices_old.push_back(vi);
             s.vertices.push_back({ nv });
-            s.vertices.back().adj_faces.insert(s.faces.size());
+            s.vertices.back().adj_faces.push_back(s.faces.size());
         }
         f.new_face_idx = s.faces.size();
         // create the new face
@@ -181,12 +220,14 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                     const auto evi3 = nf1.new_vertex_idx(vi0);
                     Face nf;
                     nf.v_indices = { evi0, evi1, evi2, evi3 };
-                    s.vertices[evi0].adj_faces.insert(s.faces.size());
-                    s.vertices[evi1].adj_faces.insert(s.faces.size());
-                    s.vertices[evi2].adj_faces.insert(s.faces.size());
-                    s.vertices[evi3].adj_faces.insert(s.faces.size());
+                    s.vertices[evi0].adj_faces.push_back(s.faces.size());
+                    s.vertices[evi1].adj_faces.push_back(s.faces.size());
+                    s.vertices[evi2].adj_faces.push_back(s.faces.size());
+                    s.vertices[evi3].adj_faces.push_back(s.faces.size());
                     s.faces.push_back(std::move(nf));
-                    p.add_processed_edge(vi0, vi1);
+                    p.add_adj_faces(vi0, vi1, fi, af);
+                    p.vertices[vi0].crosses.insert(make_ordered_pair(fi, af));
+                    p.vertices[vi1].crosses.insert(make_ordered_pair(fi, af));
                     break;
                 }
             }
@@ -197,6 +238,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
     for(size_t i = 0; i < p.vertices.size(); ++i)
     {
         auto &v = p.vertices[i];
+        v.sort_adj_faces();
         Face nf;
         nf.v_indices.reserve(v.adj_faces.size());
         // find all connected faces
@@ -204,7 +246,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         {
             // find corresponding new vertex in the new face
             size_t nvi = s.faces[p.faces[fi].new_face_idx].new_vertex_idx(i);
-            s.vertices[nvi].adj_faces.insert(s.faces.size());
+            s.vertices[nvi].adj_faces.push_back(s.faces.size());
             nf.v_indices.push_back(nvi);
         }
         // connect all corresponding new vertices to form a V-face
@@ -245,17 +287,6 @@ void reshape(int w, int h)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(60, (float)w / h, 1, 100);
-    return;
-    if(w <= h)
-    {
-        glOrtho(-nRange, nRange, -nRange * aspect, nRange * aspect, -nRange, nRange);
-    }
-    else
-    {
-        glOrtho(-nRange, nRange, -nRange / aspect, nRange / aspect, -nRange, nRange);
-    }
-
-    glMatrixMode(GL_MODELVIEW);
 }
 
 int xx = 0, yy = 0;
