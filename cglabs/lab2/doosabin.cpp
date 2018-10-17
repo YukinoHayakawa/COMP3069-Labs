@@ -6,9 +6,14 @@
 #include <ctime>
 #include <fstream>
 #include <map>
+/*#include <fmt/format.h>
+#include <fmt/ostream.h>
+#include <fmt/printf.h>
+#include <iostream>*/
 
 using namespace Eigen;
 using namespace std;
+//using namespace fmt;
 
 struct Polyhedron;
 using Edge = pair<size_t, size_t>;
@@ -19,6 +24,12 @@ pair<size_t, size_t> make_ordered_pair(size_t vi0, size_t vi1)
 {
     assert(vi0 != vi1);
     return vi0 > vi1 ? make_pair(vi1, vi0) : make_pair(vi0, vi1);
+}
+
+template <typename T1, typename T2>
+ostream & operator <<(ostream &o, const pair<T1, T2> &t)
+{
+    return o << "(" << t.first << " " << t.second << ")";
 }
 
 struct Vertex
@@ -33,8 +44,9 @@ struct Vertex
         vector<size_t> sorted;
         cross_backup = crosses;
         sorted.reserve(adj_faces.size());
-        sorted.push_back(crosses.begin()->first);
+        // the order of below two lines determines winding order
         sorted.push_back(crosses.begin()->second);
+        sorted.push_back(crosses.begin()->first);
         crosses.erase(crosses.begin());
         while(sorted.size() != adj_faces.size())
         {
@@ -54,6 +66,9 @@ struct Vertex
                 }
             }
         }
+        /*if(sorted.size() == 4)
+            swap(sorted[2], sorted[3]);*/
+        //fmt::fprintf(cout, "adj {}\nsrt {}\n crs {}\n", adj_faces, sorted, cross_backup);
         adj_faces = std::move(sorted);
     }
 };
@@ -113,6 +128,7 @@ struct Polyhedron
     {
         for(auto &&f : faces)
         {
+            //float t = 0;
             glBegin(GL_POLYGON);
             for(auto &&vi : f.v_indices)
             {
@@ -120,6 +136,7 @@ struct Polyhedron
                 //glColor3fv((p + Vector3f::Ones()).normalized().cwiseAbs().eval().data());
                 glColor3fv(color.data());
                 glVertex3fv(p.data());
+              //  t += 0.25f;
             }
             glEnd();
         }
@@ -327,7 +344,7 @@ void display(void)
     box.draw();
     sd.draw();
     sd2.draw();
-
+    sd3.draw();
 
     glutSwapBuffers();
     glutPostRedisplay();
@@ -341,14 +358,22 @@ void Key(unsigned char key, int x, int y)
 int main(int argc, char **argv)
 {
     init_box();
+
     sd = doo_sabin(box);
     box.write_obj("box.obj");
+
     sd.color = { 1, 1, 0 };
     sd.write_obj("sdp.obj");
+
     sd2 = doo_sabin(sd);
-    sd.write_obj("sd.obj");
     sd2.color = { 1, 0, 1 };
+    sd.write_obj("sd.obj");
+
+    sd3 = doo_sabin(sd2);
+    sd3.color = { 0, 1, 1 };
     sd2.write_obj("sd2.obj");
+
+    sd3.write_obj("sd3.obj");
 
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
