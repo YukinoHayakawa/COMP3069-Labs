@@ -25,36 +25,36 @@ struct Vertex
 {
     Vector3f pos;
     vector<size_t> adj_faces;
-    set<CrossEdge> crosses;
+    set<CrossEdge> crosses, cross_backup;
 
     void sort_adj_faces()
     {
+        assert(crosses.size() == adj_faces.size());
         vector<size_t> sorted;
+        cross_backup = crosses;
         sorted.reserve(adj_faces.size());
         sorted.push_back(crosses.begin()->first);
         sorted.push_back(crosses.begin()->second);
         crosses.erase(crosses.begin());
-        while(!crosses.empty())
+        while(sorted.size() != adj_faces.size())
         {
-            for(auto i = crosses.begin(); i != crosses.end(); )
+            for(auto i = crosses.begin(); i != crosses.end(); ++i)
             {
-                if(i->first == sorted.back())
+                if(i->first == sorted.back() || i->first == sorted.front())
                 {
                     sorted.push_back(i->second);
-                    i = crosses.erase(i);
+                    crosses.erase(i);
+                    break;
                 }
-                else if(i->second == sorted.back())
+                if(i->second == sorted.back() || i->second == sorted.front())
                 {
                     sorted.push_back(i->first);
-                    i = crosses.erase(i);
-                }
-                else
-                {
-                    ++i;
+                    crosses.erase(i);
+                    break;
                 }
             }
         }
-        adj_faces = sorted;
+        adj_faces = std::move(sorted);
     }
 };
 
@@ -87,6 +87,7 @@ struct Polyhedron
 {
     vector<Vertex> vertices;
     vector<Face> faces;
+    size_t num_edges = 0;
 
     map<Edge, AdjFaces> adjacent_faces;
 
@@ -127,13 +128,14 @@ struct Polyhedron
     void write_obj(const string &path)
     {
         ofstream out(path);
+        out << "# e = " << num_edges << "\n";
         for(auto &&v : vertices)
         {
             out << "# adj: ";
             for(auto &&a : v.adj_faces)
                 out << a << " ";
             out << "# crs: ";
-            for(auto &&c : v.crosses)
+            for(auto &&c : v.cross_backup)
                 out << c.first << "-" << c.second << " ";
             out << "\n";
             out << "v " << v.pos.x() << " " << v.pos.y() << " " << v.pos.z() << "\n";
@@ -196,13 +198,15 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
     for(size_t fi = 0; fi < p.faces.size(); ++fi)
     {
         auto &f = p.faces[fi];
+        assert(f.v_indices.size() >= 3);
         // create E-faces for each edge
-        for(size_t i = 0; i < f.v_indices.size() - 1; ++i)
+        for(size_t i = 0; i < f.v_indices.size(); ++i)
         {
-            const size_t vi0 = f.v_indices[i], vi1 = f.v_indices[i + 1];
+            const size_t vi0 = f.v_indices[i], vi1 = i == f.v_indices.size() -1 ? f.v_indices[0] : f.v_indices[i + 1];
             if(p.is_edge_processed(vi0, vi1))
                 continue;
-            // find adjacent face
+            bool found = false;
+            // find adjacent face by v0 and v1
             for(auto &&af : p.vertices[vi0].adj_faces) // or equivalently, use vi1
             {
                 if(af == fi) continue;
@@ -210,6 +214,8 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                 // adjacent face is found
                 if(cf.has_edge(vi0, vi1))
                 {
+                    found = true;
+                    ++p.num_edges;
                     const auto &nf0 = s.faces[f.new_face_idx];
                     const auto &nf1 = s.faces[cf.new_face_idx];
                     // find corresponding new vertices on each face,
@@ -231,6 +237,7 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
                     break;
                 }
             }
+            assert(found);
         }
     }
 
@@ -252,6 +259,9 @@ Polyhedron doo_sabin(Polyhedron &p, float t = 0.5f)
         // connect all corresponding new vertices to form a V-face
         s.faces.push_back(std::move(nf));
     }
+
+    assert(s.vertices.size() == 2 * p.num_edges);
+    assert(s.faces.size() == p.faces.size() + p.vertices.size() + p.num_edges);
     return std::move(s);
 }
 
@@ -332,11 +342,12 @@ int main(int argc, char **argv)
 {
     init_box();
     sd = doo_sabin(box);
-    sd.color = { 1, 1, 0 };
-    sd2 = doo_sabin(sd);
-    sd2.color = { 1, 0, 1 };
     box.write_obj("box.obj");
+    sd.color = { 1, 1, 0 };
+    sd.write_obj("sdp.obj");
+    sd2 = doo_sabin(sd);
     sd.write_obj("sd.obj");
+    sd2.color = { 1, 0, 1 };
     sd2.write_obj("sd2.obj");
 
     glutInit(&argc, argv);
